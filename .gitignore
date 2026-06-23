@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+.venv
+venv/
+env/
+test.db
+
+# Secrets — NEVER commit
+.env
+.env.local
+.env.production
+
+# Alembic generated versions (keep .gitkeep)
+backend/alembic/versions/*.py
+!backend/alembic/versions/.gitkeep
+
+# Node
+node_modules/
+frontend/dist/
+npm-debug.log*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# User uploads
+uploads/
+
+# Logs
+*.log
+logs/
+
+# Coverage
+coverage/
+*.lcov

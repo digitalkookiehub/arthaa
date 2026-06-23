@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: arthaa_db_dev
+    environment:
+      POSTGRES_USER: arthaa_user
+      POSTGRES_PASSWORD: arthaa_pass
+      POSTGRES_DB: arthaa
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arthaa_user"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - arthaa_dev
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: arthaa_backend_dev
+    environment:
+      DATABASE_URL: postgresql://arthaa_user:arthaa_pass@db:5432/arthaa
+      SECRET_KEY: dev-secret-key-arthaa
+      OLLAMA_BASE_URL: http://ollama:11434
+      APP_ENV: development
+      CORS_ORIGINS: '["http://localhost:5173","http://localhost:3000"]'
+    volumes:
+      - ./backend:/app
+      - ./uploads:/app/uploads
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - arthaa_dev
+
+  frontend:
+    image: node:20-alpine
+    container_name: arthaa_frontend_dev
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_URL: http://localhost:8000
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    networks:
+      - arthaa_dev
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: arthaa_ollama_dev
+    volumes:
+      - ollama_data_dev:/root/.ollama
+    ports:
+      - "11434:11434"
+    networks:
+      - arthaa_dev
+
+volumes:
+  postgres_data_dev:
+  ollama_data_dev:
+
+networks:
+  arthaa_dev:
+    driver: bridge
