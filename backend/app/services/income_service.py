@@ -11,14 +11,20 @@ logger = logging.getLogger(__name__)
 
 
 def get_incomes(
-    db: Session, user_id: int, page: int = 1, limit: int = 20,
+    db: Session, user_id: int, page: int = 1, limit: int = 200,
     month: int | None = None, year: int | None = None,
+    from_date=None, to_date=None,
 ) -> tuple[list[Income], int]:
     q = db.query(Income).filter(Income.user_id == user_id)
-    if month:
-        q = q.filter(func.extract("month", Income.date) == month)
-    if year:
-        q = q.filter(func.extract("year", Income.date) == year)
+    if from_date:
+        q = q.filter(Income.date >= from_date)
+    if to_date:
+        q = q.filter(Income.date <= to_date)
+    if not from_date and not to_date:
+        if month:
+            q = q.filter(func.extract("month", Income.date) == month)
+        if year:
+            q = q.filter(func.extract("year", Income.date) == year)
     total = q.count()
     items = q.order_by(Income.date.desc()).offset((page - 1) * limit).limit(limit).all()
     return items, total

@@ -1,6 +1,8 @@
 from datetime import date
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+import io
 
 from app.auth.dependencies import get_current_user
 from app.database import get_db
@@ -52,3 +54,21 @@ async def tax_summary(
         today = date.today()
         fy    = today.year if today.month >= 4 else today.year - 1
     return reports_service.tax_report(db, current_user.id, fy)
+
+
+@router.get("/export/csv")
+async def export_csv(
+    from_date:  date  = Query(...),
+    to_date:    date  = Query(...),
+    data_type:  str   = Query(default="all", regex="^(expenses|income|all)$"),
+    current_user: User    = Depends(get_current_user),
+    db: Session           = Depends(get_db),
+):
+    """Download transactions as a CSV file."""
+    csv_text = reports_service.export_csv(db, current_user.id, from_date, to_date, data_type)
+    filename = f"arthaa_{data_type}_{from_date}_{to_date}.csv"
+    return StreamingResponse(
+        io.StringIO(csv_text),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

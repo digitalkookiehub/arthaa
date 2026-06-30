@@ -20,10 +20,15 @@ def get_expenses(db: Session, user_id: int, filters: ExpenseFilters) -> tuple[li
         .options(joinedload(Expense.category))
         .filter(Expense.user_id == user_id)
     )
-    if filters.month:
-        q = q.filter(func.extract("month", Expense.date) == filters.month)
-    if filters.year:
-        q = q.filter(func.extract("year", Expense.date) == filters.year)
+    if filters.from_date:
+        q = q.filter(Expense.date >= filters.from_date)
+    if filters.to_date:
+        q = q.filter(Expense.date <= filters.to_date)
+    if not filters.from_date and not filters.to_date:
+        if filters.month:
+            q = q.filter(func.extract("month", Expense.date) == filters.month)
+        if filters.year:
+            q = q.filter(func.extract("year", Expense.date) == filters.year)
     if filters.category_id:
         q = q.filter(Expense.category_id == filters.category_id)
     if filters.account_id:

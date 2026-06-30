@@ -6,7 +6,10 @@ Produces four report types:
   - expense     : category/payment-method breakdown for a date range
   - net_worth   : historical snapshots
   - tax         : Indian IT-Act deductible investments + income summary
+  - export_csv  : raw transaction export as CSV string
 """
+import csv
+import io
 import logging
 from datetime import date
 from calendar import monthrange
@@ -354,3 +357,69 @@ def _new_regime_tax(taxable_income_paise: int) -> int:
     # 4% cess
     tax *= 1.04
     return int(round(tax * 100))  # back to paise
+
+
+# ── CSV export ────────────────────────────────────────────────────────────────
+
+def export_csv(
+    db: Session,
+    user_id: int,
+    from_date: date,
+    to_date: date,
+    data_type: str = "all",
+) -> str:
+    """
+    Export transactions as a CSV string.
+    data_type: 'expenses' | 'income' | 'all'
+    Amounts returned in ₹ (rupees) with 2 decimal places.
+    """
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+
+    if data_type in ("expenses", "all"):
+        writer.writerow(["Date", "Type", "Description", "Category", "Amount (₹)", "Payment Method", "Tags"])
+        rows = (
+            db.query(Expense, ExpenseCategory)
+            .join(ExpenseCategory, Expense.category_id == ExpenseCategory.id)
+            .filter(Expense.user_id == user_id, Expense.date >= from_date, Expense.date <= to_date)
+            .order_by(Expense.date.asc())
+            .all()
+        )
+        for exp, cat in rows:
+            pm = (exp.payment_method.value if hasattr(exp.payment_method, 'value') else exp.payment_method) or ''
+            tags = ','.join(exp.tags or [])
+            writer.writerow([
+                str(exp.date),
+                'Expense',
+                exp.description or '',
+                cat.name,
+                f'{exp.amount / 100:.2f}',
+                pm,
+                tags,
+            ])
+
+    if data_type in ("income", "all"):
+        if data_type == "all":
+            writer.writerow([])  # blank separator
+        writer.writerow(["Date", "Type", "Description", "Source", "Net Pay (₹)", "Gross Pay (₹)", "Total Deductions (₹)"])
+        inc_rows = (
+            db.query(Income)
+            .filter(Income.user_id == user_id, Income.date >= from_date, Income.date <= to_date)
+            .order_by(Income.date.asc())
+            .all()
+        )
+        for inc in inc_rows:
+            src = (inc.source_type.value if hasattr(inc.source_type, 'value') else inc.source_type) or ''
+            gross = f'{inc.gross_pay_paise / 100:.2f}' if inc.gross_pay_paise else ''
+            ded   = f'{inc.total_deductions_paise / 100:.2f}' if inc.total_deductions_paise else ''
+            writer.writerow([
+                str(inc.date),
+                'Income',
+                inc.description or '',
+                src,
+                f'{inc.amount / 100:.2f}',
+                gross,
+                ded,
+            ])
+
+    return buf.getvalue()

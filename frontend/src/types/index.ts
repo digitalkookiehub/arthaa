@@ -58,13 +58,23 @@ export interface Expense {
   created_at: string;
 }
 
+export interface DeductionItem {
+  label: string;
+  amount_paise: number;
+}
+
 export interface Income {
   id: number;
   account_id: number | null;
   source_type: string;
-  amount: number; // paise
+  amount: number; // paise (net pay)
   date: string;
   description: string | null;
+  is_recurring: boolean;
+  deductions: DeductionItem[];
+  total_deductions_paise: number | null;
+  gross_pay_paise: number | null;
+  created_at: string;
 }
 
 export interface Budget {

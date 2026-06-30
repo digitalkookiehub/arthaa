@@ -24,6 +24,8 @@ INDIAN_EXPENSE_CATEGORIES = [
     {"name": "Shopping", "icon": "🛍️", "color": "#E64980"},
     {"name": "Home & Maintenance", "icon": "🏠", "color": "#FFA94D"},
     {"name": "Health & Fitness", "icon": "💪", "color": "#69DB7C"},
+    {"name": "Transfer", "icon": "🔄", "color": "#74C0FC"},
+    {"name": "ATM Cash", "icon": "🏧", "color": "#FF922B"},
     {"name": "Miscellaneous", "icon": "📦", "color": "#868E96"},
 ]
 

@@ -1,6 +1,6 @@
 import {
   Box, VStack, HStack, Heading, Text, SimpleGrid, Stat, StatLabel, StatNumber,
-  StatHelpText, Button, Modal, ModalOverlay, ModalContent, ModalHeader,
+  Button, Modal, ModalOverlay, ModalContent, ModalHeader,
   ModalBody, ModalFooter, ModalCloseButton, FormControl, FormLabel, Input,
   Select, Textarea, useDisclosure, useToast, Spinner, Badge, IconButton,
   NumberInput, NumberInputField,
@@ -25,20 +25,21 @@ interface InvestmentForm {
   notes: string;
 }
 
-interface PortfolioGroup {
-  investment_type: string;
-  total_invested: number;
-  total_current_value: number;
-  count: number;
+interface PortfolioByType {
+  type: string;
+  invested: number;
+  current_value: number;
+  gain_loss: number;
 }
 
-const TYPE_COLORS: Record<string, string> = {
-  ppf: '#6B46C1', epf: '#805AD5', nps: '#9F7AEA', sip: '#48BB78',
-  mutual_fund: '#38A169', stocks: '#ECC94B', fd: '#4299E1', gold: '#F6AD55',
-  post_office: '#FC8181',
-};
+interface PortfolioSummary {
+  total_invested: number;
+  total_current_value: number;
+  total_gain_loss: number;
+  by_type: PortfolioByType[];
+}
 
-const CHART_COLORS = ['#6B46C1','#48BB78','#ECC94B','#4299E1','#F6AD55','#FC8181','#805AD5','#38A169','#9F7AEA'];
+const CHART_COLORS = ['#6B46C1', '#48BB78', '#ECC94B', '#4299E1', '#F6AD55', '#FC8181', '#805AD5', '#38A169', '#9F7AEA'];
 
 export default function InvestmentsPage() {
   const toast = useToast();
@@ -51,7 +52,7 @@ export default function InvestmentsPage() {
     queryFn: () => api.get('/investments').then(r => r.data),
   });
 
-  const { data: portfolio } = useQuery<PortfolioGroup[]>({
+  const { data: portfolio } = useQuery<PortfolioSummary>({
     queryKey: ['portfolio-summary'],
     queryFn: () => api.get('/investments/portfolio-summary').then(r => r.data),
   });
@@ -88,15 +89,15 @@ export default function InvestmentsPage() {
     });
   };
 
-  const totalInvested = investments?.reduce((s, i) => s + i.invested_amount, 0) ?? 0;
-  const totalCurrent = investments?.reduce((s, i) => s + i.current_value, 0) ?? 0;
-  const totalGain = totalCurrent - totalInvested;
+  const totalInvested = portfolio?.total_invested ?? 0;
+  const totalCurrent = portfolio?.total_current_value ?? 0;
+  const totalGain = portfolio?.total_gain_loss ?? 0;
   const totalReturnPct = totalInvested > 0 ? ((totalGain / totalInvested) * 100).toFixed(1) : '0';
 
-  const chartData = portfolio?.map(g => ({
-    name: g.investment_type.toUpperCase(),
-    value: g.total_current_value,
-  })) ?? [];
+  const chartData = (portfolio?.by_type ?? []).map(g => ({
+    name: g.type.toUpperCase(),
+    value: g.current_value,
+  }));
 
   return (
     <PageWrapper>
@@ -141,7 +142,6 @@ export default function InvestmentsPage() {
         </SimpleGrid>
 
         <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={6}>
-          {/* Portfolio Chart */}
           {chartData.length > 0 && (
             <GlassCard>
               <Heading size="sm" mb={4}>Portfolio Breakdown</Heading>
@@ -160,7 +160,6 @@ export default function InvestmentsPage() {
             </GlassCard>
           )}
 
-          {/* Investment List */}
           <GlassCard>
             <Heading size="sm" mb={4}>Holdings</Heading>
             {isLoading ? (
@@ -168,6 +167,7 @@ export default function InvestmentsPage() {
             ) : investments?.length === 0 ? (
               <Box textAlign="center" py={4}>
                 <Text color="gray.500" fontSize="sm">No investments added yet.</Text>
+                <GradientButton size="sm" mt={3} onClick={onOpen}>Add your first investment</GradientButton>
               </Box>
             ) : (
               <VStack align="stretch" spacing={3} maxH="300px" overflowY="auto">
@@ -178,7 +178,7 @@ export default function InvestmentsPage() {
                       <HStack>
                         <Text fontSize="sm" fontWeight="semibold">{inv.name}</Text>
                         <Badge colorScheme="purple" fontSize="xs" variant="subtle">
-                          {inv.investment_type.toUpperCase()}
+                          {inv.investment_type}
                         </Badge>
                       </HStack>
                       <Text fontSize="xs" color="gray.500">
@@ -216,15 +216,16 @@ export default function InvestmentsPage() {
               <FormControl isRequired>
                 <FormLabel fontSize="sm">Type</FormLabel>
                 <Select placeholder="Select type" {...register('investment_type', { required: true })}>
-                  <option value="ppf">PPF</option>
-                  <option value="epf">EPF</option>
-                  <option value="nps">NPS</option>
-                  <option value="sip">SIP</option>
-                  <option value="mutual_fund">Mutual Fund</option>
-                  <option value="stocks">Stocks</option>
-                  <option value="fd">Fixed Deposit</option>
-                  <option value="gold">Gold</option>
-                  <option value="post_office">Post Office</option>
+                  <option value="PPF">PPF (Public Provident Fund)</option>
+                  <option value="EPF">EPF (Employee Provident Fund)</option>
+                  <option value="NPS">NPS (National Pension Scheme)</option>
+                  <option value="SIP">SIP</option>
+                  <option value="MutualFund">Mutual Fund</option>
+                  <option value="Stocks">Stocks</option>
+                  <option value="FD">Fixed Deposit (FD)</option>
+                  <option value="Gold">Gold</option>
+                  <option value="PostOffice">Post Office Scheme</option>
+                  <option value="Other">Other</option>
                 </Select>
               </FormControl>
               <FormControl isRequired>
@@ -234,15 +235,21 @@ export default function InvestmentsPage() {
               <SimpleGrid columns={2} spacing={3} w="full">
                 <FormControl isRequired>
                   <FormLabel fontSize="sm">Invested (₹)</FormLabel>
-                  <NumberInput min={0}><NumberInputField placeholder="0" {...register('invested_amount', { required: true })} /></NumberInput>
+                  <NumberInput min={0}>
+                    <NumberInputField placeholder="0" {...register('invested_amount', { required: true })} />
+                  </NumberInput>
                 </FormControl>
                 <FormControl isRequired>
                   <FormLabel fontSize="sm">Current Value (₹)</FormLabel>
-                  <NumberInput min={0}><NumberInputField placeholder="0" {...register('current_value', { required: true })} /></NumberInput>
+                  <NumberInput min={0}>
+                    <NumberInputField placeholder="0" {...register('current_value', { required: true })} />
+                  </NumberInput>
                 </FormControl>
                 <FormControl>
                   <FormLabel fontSize="sm">Returns (%)</FormLabel>
-                  <NumberInput step={0.1}><NumberInputField placeholder="12.5" {...register('returns_pct')} /></NumberInput>
+                  <NumberInput step={0.1}>
+                    <NumberInputField placeholder="12.5" {...register('returns_pct')} />
+                  </NumberInput>
                 </FormControl>
                 <FormControl>
                   <FormLabel fontSize="sm">Start Date</FormLabel>

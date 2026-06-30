@@ -16,6 +16,19 @@ import { GlassCard } from '../../components/ui/GlassCard';
 import { formatINR } from '../../lib/utils';
 import api from '../../services/api';
 
+async function downloadCSV(fromDate: string, toDate: string, dataType: 'expenses' | 'income' | 'all') {
+  const res = await api.get('/reports/export/csv', {
+    params: { from_date: fromDate, to_date: toDate, data_type: dataType },
+    responseType: 'blob',
+  });
+  const url = URL.createObjectURL(new Blob([res.data], { type: 'text/csv' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `arthaa_${dataType}_${fromDate}_${toDate}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -117,7 +130,7 @@ export default function ReportsPage() {
             <Text color="gray.500" fontSize="sm">Analyse your financial data across time</Text>
           </Box>
           <Button size="sm" variant="outline" colorScheme="purple" onClick={() => window.print()}>
-            🖨️ Print
+            🖨️ Save as PDF
           </Button>
         </HStack>
 
@@ -137,18 +150,31 @@ export default function ReportsPage() {
               <VStack spacing={5} align="stretch">
                 {/* Controls */}
                 <GlassCard p={4}>
-                  <HStack flexWrap="wrap" gap={3}>
-                    <HStack>
-                      <Text fontSize="sm" color="gray.500" whiteSpace="nowrap">Year:</Text>
-                      <Select size="sm" w="28" value={cfYear} onChange={e => setCfYear(parseInt(e.target.value))}>
-                        {years.map(y => <option key={y} value={y}>{cfFiscal ? `FY ${y}-${String(y+1).slice(2)}` : String(y)}</option>)}
-                      </Select>
+                  <HStack flexWrap="wrap" gap={3} justify="space-between">
+                    <HStack flexWrap="wrap" gap={3}>
+                      <HStack>
+                        <Text fontSize="sm" color="gray.500" whiteSpace="nowrap">Year:</Text>
+                        <Select size="sm" w="28" value={cfYear} onChange={e => setCfYear(parseInt(e.target.value))}>
+                          {years.map(y => <option key={y} value={y}>{cfFiscal ? `FY ${y}-${String(y+1).slice(2)}` : String(y)}</option>)}
+                        </Select>
+                      </HStack>
+                      <HStack>
+                        <Text fontSize="sm" color="gray.500">Mode:</Text>
+                        <Button size="xs" colorScheme={cfFiscal ? 'purple' : 'gray'} onClick={() => setCfFiscal(true)}>Indian FY (Apr–Mar)</Button>
+                        <Button size="xs" colorScheme={!cfFiscal ? 'purple' : 'gray'} onClick={() => setCfFiscal(false)}>Calendar Year</Button>
+                      </HStack>
                     </HStack>
-                    <HStack>
-                      <Text fontSize="sm" color="gray.500">Mode:</Text>
-                      <Button size="xs" colorScheme={cfFiscal ? 'purple' : 'gray'} onClick={() => setCfFiscal(true)}>Indian FY (Apr–Mar)</Button>
-                      <Button size="xs" colorScheme={!cfFiscal ? 'purple' : 'gray'} onClick={() => setCfFiscal(false)}>Calendar Year</Button>
-                    </HStack>
+                    {cfQuery.data && (
+                      <Button size="xs" variant="outline" colorScheme="green"
+                        onClick={() => {
+                          const [from, to] = cfFiscal
+                            ? [`${cfYear}-04-01`, `${cfYear + 1}-03-31`]
+                            : [`${cfYear}-01-01`, `${cfYear}-12-31`];
+                          downloadCSV(from, to, 'all');
+                        }}>
+                        ⬇️ Download CSV
+                      </Button>
+                    )}
                   </HStack>
                 </GlassCard>
 
@@ -244,23 +270,36 @@ export default function ReportsPage() {
               <VStack spacing={5} align="stretch">
                 {/* Date range */}
                 <GlassCard p={4}>
-                  <HStack flexWrap="wrap" gap={3}>
-                    <HStack>
-                      <Text fontSize="sm" color="gray.500">From:</Text>
-                      <Input size="sm" type="date" w="40" value={expFrom} onChange={e => setExpFrom(e.target.value)} />
+                  <HStack flexWrap="wrap" gap={3} justify="space-between">
+                    <HStack flexWrap="wrap" gap={3}>
+                      <HStack>
+                        <Text fontSize="sm" color="gray.500">From:</Text>
+                        <Input size="sm" type="date" w="40" value={expFrom} onChange={e => setExpFrom(e.target.value)} />
+                      </HStack>
+                      <HStack>
+                        <Text fontSize="sm" color="gray.500">To:</Text>
+                        <Input size="sm" type="date" w="40" value={expTo} onChange={e => setExpTo(e.target.value)} />
+                      </HStack>
+                      {[
+                        { label: 'This Month', fn: () => { const [f,t]=thisMonthRange(); setExpFrom(f); setExpTo(t); } },
+                        { label: 'Last 3M',    fn: () => { const t=new Date(); const f=new Date(t); f.setMonth(f.getMonth()-3); setExpFrom(f.toISOString().slice(0,10)); setExpTo(t.toISOString().slice(0,10)); } },
+                        { label: 'This Year',  fn: () => { setExpFrom(`${CURRENT_YEAR}-01-01`); setExpTo(`${CURRENT_YEAR}-12-31`); } },
+                      ].map(p => (
+                        <Button key={p.label} size="xs" variant="outline" colorScheme="purple" onClick={p.fn}>{p.label}</Button>
+                      ))}
                     </HStack>
-                    <HStack>
-                      <Text fontSize="sm" color="gray.500">To:</Text>
-                      <Input size="sm" type="date" w="40" value={expTo} onChange={e => setExpTo(e.target.value)} />
-                    </HStack>
-                    {/* Quick presets */}
-                    {[
-                      { label: 'This Month', fn: () => { const [f,t]=thisMonthRange(); setExpFrom(f); setExpTo(t); } },
-                      { label: 'Last 3M',    fn: () => { const t=new Date(); const f=new Date(t); f.setMonth(f.getMonth()-3); setExpFrom(f.toISOString().slice(0,10)); setExpTo(t.toISOString().slice(0,10)); } },
-                      { label: 'This Year',  fn: () => { setExpFrom(`${CURRENT_YEAR}-01-01`); setExpTo(`${CURRENT_YEAR}-12-31`); } },
-                    ].map(p => (
-                      <Button key={p.label} size="xs" variant="outline" colorScheme="purple" onClick={p.fn}>{p.label}</Button>
-                    ))}
+                    {expFrom && expTo && (
+                      <HStack spacing={1}>
+                        <Button size="xs" variant="outline" colorScheme="green"
+                          onClick={() => downloadCSV(expFrom, expTo, 'expenses')}>
+                          ⬇️ Expenses CSV
+                        </Button>
+                        <Button size="xs" variant="outline" colorScheme="teal"
+                          onClick={() => downloadCSV(expFrom, expTo, 'income')}>
+                          ⬇️ Income CSV
+                        </Button>
+                      </HStack>
+                    )}
                   </HStack>
                 </GlassCard>
 

@@ -1,6 +1,7 @@
 import enum
 
 from sqlalchemy import Boolean, Column, Date, Enum, ForeignKey, Index, Integer, String
+from sqlalchemy.dialects.postgresql import JSONB
 
 from app.database import Base
 from app.models.base import TimestampMixin
@@ -33,5 +34,8 @@ class Income(Base, TimestampMixin):
     description = Column(String(500), nullable=True)
     is_recurring = Column(Boolean, default=False)
     recurring_interval = Column(String(20), nullable=True)
+    deductions = Column(JSONB, nullable=True, default=list)  # [{"label": str, "amount_paise": int}]
+    total_deductions_paise = Column(Integer, nullable=True)
+    gross_pay_paise = Column(Integer, nullable=True)
 
     __table_args__ = (Index("ix_income_user_date", "user_id", "date"),)

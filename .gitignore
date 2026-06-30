@@ -17,7 +17,11 @@ test.db
 # Secrets — NEVER commit
 .env
 .env.local
-.env.production
+
+# Personal/local files — never push
+Loan_Schedules/
+screenshots/
+Prompt/
 
 # Alembic generated versions (keep .gitkeep)
 backend/alembic/versions/*.py

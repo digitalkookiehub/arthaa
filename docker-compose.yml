@@ -6,12 +6,10 @@ services:
     container_name: arthaa_db
     environment:
       POSTGRES_USER: ${DB_USER:-arthaa_user}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-arthaa_pass}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: ${DB_NAME:-arthaa}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-arthaa_user}"]
       interval: 10s
@@ -21,63 +19,112 @@ services:
     networks:
       - arthaa_network
 
+  ollama:
+    image: ollama/ollama:latest
+    container_name: arthaa_ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list 2>&1 | head -1 || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 10
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - arthaa_network
+
+  ollama-init:
+    image: ollama/ollama:latest
+    container_name: arthaa_ollama_init
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["ollama", "pull", "${OLLAMA_MODEL:-deepseek-r1:7b}"]
+    networks:
+      - arthaa_network
+    restart: "no"
+
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
     container_name: arthaa_backend
     environment:
-      DATABASE_URL: postgresql://${DB_USER:-arthaa_user}:${DB_PASSWORD:-arthaa_pass}@db:5432/${DB_NAME:-arthaa}
-      SECRET_KEY: ${SECRET_KEY:-change-in-production}
+      DATABASE_URL: postgresql://${DB_USER:-arthaa_user}:${DB_PASSWORD}@db:5432/${DB_NAME:-arthaa}
+      SECRET_KEY: ${SECRET_KEY}
       ALGORITHM: HS256
-      ACCESS_TOKEN_EXPIRE_MINUTES: 30
-      REFRESH_TOKEN_EXPIRE_DAYS: 7
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-7}
       OLLAMA_BASE_URL: http://ollama:11434
       OLLAMA_MODEL: ${OLLAMA_MODEL:-deepseek-r1:7b}
       UPLOAD_DIR: /app/uploads
-      APP_ENV: ${APP_ENV:-production}
-      CORS_ORIGINS: '["http://localhost:80","http://localhost:3000"]'
+      APP_ENV: production
+      CORS_ORIGINS: '["https://${DOMAIN}","https://www.${DOMAIN}","http://${DOMAIN}"]'
     volumes:
       - uploads_data:/app/uploads
-    ports:
-      - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     restart: unless-stopped
     networks:
       - arthaa_network
     command: >
-      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2"
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        VITE_API_URL: https://${DOMAIN}
     container_name: arthaa_frontend
-    ports:
-      - "80:80"
-    depends_on:
-      - backend
     restart: unless-stopped
     networks:
       - arthaa_network
 
-  ollama:
-    image: ollama/ollama:latest
-    container_name: arthaa_ollama
-    volumes:
-      - ollama_data:/root/.ollama
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: arthaa_nginx
     ports:
-      - "11434:11434"
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - certbot_certs:/etc/letsencrypt:ro
+      - certbot_www:/var/www/certbot:ro
+    depends_on:
+      - backend
+      - frontend
     restart: unless-stopped
     networks:
       - arthaa_network
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: arthaa_certbot
+    volumes:
+      - certbot_certs:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --quiet; sleep 12h & wait $${!}; done;'"
+    restart: unless-stopped
 
 volumes:
   postgres_data:
   uploads_data:
   ollama_data:
+  certbot_certs:
+  certbot_www:
 
 networks:
   arthaa_network:

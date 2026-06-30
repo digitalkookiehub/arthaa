@@ -7,6 +7,7 @@ import {
 } from '@chakra-ui/react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
+import { useState } from 'react';
 import { PageWrapper } from '../../components/layout/PageWrapper';
 import { GlassCard } from '../../components/ui/GlassCard';
 import { GradientButton } from '../../components/ui/GradientButton';
@@ -25,8 +26,12 @@ interface GoalForm {
 }
 
 const GOAL_ICONS: Record<string, string> = {
-  emergency_fund: '🛡️', home: '🏠', vehicle: '🚗', education: '🎓',
-  travel: '✈️', wedding: '💍', retirement: '🌅', gadget: '📱', other: '🎯',
+  emergency_fund: '🛡️',
+  house: '🏠',
+  education: '🎓',
+  vacation: '✈️',
+  retirement: '🌅',
+  custom: '🎯',
 };
 
 const STATUS_COLORS: Record<string, string> = {
@@ -37,7 +42,10 @@ export default function GoalsPage() {
   const toast = useToast();
   const qc = useQueryClient();
   const { isOpen, onOpen, onClose } = useDisclosure();
+  const { isOpen: isAddOpen, onOpen: onAddOpen, onClose: onAddClose } = useDisclosure();
   const { register, handleSubmit, reset, formState: { isSubmitting } } = useForm<GoalForm>();
+  const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
+  const [addAmount, setAddAmount] = useState('');
 
   const { data: goals, isLoading } = useQuery<Goal[]>({
     queryKey: ['goals'],
@@ -52,6 +60,18 @@ export default function GoalsPage() {
       reset(); onClose();
     },
     onError: () => toast({ title: 'Failed to save', status: 'error', duration: 3000 }),
+  });
+
+  const addSavingsMutation = useMutation({
+    mutationFn: ({ id, current_amount }: { id: number; current_amount: number }) =>
+      api.put(`/goals/${id}`, { current_amount }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['goals'] });
+      toast({ title: 'Savings updated', status: 'success', duration: 2000 });
+      setAddAmount('');
+      onAddClose();
+    },
+    onError: () => toast({ title: 'Failed to update', status: 'error', duration: 3000 }),
   });
 
   const deleteMutation = useMutation({
@@ -73,6 +93,15 @@ export default function GoalsPage() {
         ? Math.round(parseFloat(data.monthly_contribution) * 100)
         : null,
       priority: parseInt(data.priority) || 3,
+    });
+  };
+
+  const handleAddSavings = () => {
+    if (!selectedGoal || !addAmount) return;
+    const added = Math.round(parseFloat(addAmount) * 100);
+    addSavingsMutation.mutate({
+      id: selectedGoal.id,
+      current_amount: selectedGoal.current_amount + added,
     });
   };
 
@@ -99,10 +128,14 @@ export default function GoalsPage() {
           <GradientButton onClick={onOpen} size="sm">+ New Goal</GradientButton>
         </HStack>
 
-        <SimpleGrid columns={{ base: 2, md: 3 }} spacing={4}>
+        <SimpleGrid columns={{ base: 2, md: 4 }} spacing={4}>
           <GlassCard p={4}>
             <Text fontSize="xs" color="gray.500">Active Goals</Text>
             <Text fontSize="2xl" fontWeight="bold">{activeGoals.length}</Text>
+          </GlassCard>
+          <GlassCard p={4}>
+            <Text fontSize="xs" color="gray.500">Completed</Text>
+            <Text fontSize="2xl" fontWeight="bold" color="blue.500">{completedGoals.length}</Text>
           </GlassCard>
           <GlassCard p={4}>
             <Text fontSize="xs" color="gray.500">Total Saved</Text>
@@ -143,11 +176,19 @@ export default function GoalsPage() {
                         </Badge>
                       </VStack>
                     </HStack>
-                    <IconButton
-                      aria-label="Delete" icon={<Text fontSize="xs">✕</Text>}
-                      size="xs" variant="ghost" colorScheme="red"
-                      onClick={() => deleteMutation.mutate(goal.id)}
-                    />
+                    <HStack spacing={1}>
+                      <IconButton
+                        aria-label="Add savings"
+                        icon={<Text fontSize="xs" fontWeight="bold">+₹</Text>}
+                        size="xs" variant="ghost" colorScheme="green"
+                        onClick={() => { setSelectedGoal(goal); setAddAmount(''); onAddOpen(); }}
+                      />
+                      <IconButton
+                        aria-label="Delete" icon={<Text fontSize="xs">✕</Text>}
+                        size="xs" variant="ghost" colorScheme="red"
+                        onClick={() => deleteMutation.mutate(goal.id)}
+                      />
+                    </HStack>
                   </HStack>
 
                   <HStack justify="space-between" mb={3}>
@@ -168,6 +209,8 @@ export default function GoalsPage() {
                     </VStack>
                   </HStack>
 
+                  <Progress value={pct} colorScheme={color} size="xs" borderRadius="full" mb={2} />
+
                   {goal.target_date && (
                     <Text fontSize="xs" color="gray.500">
                       Target by: {formatDate(goal.target_date)}
@@ -175,7 +218,7 @@ export default function GoalsPage() {
                   )}
                   {goal.monthly_contribution && (
                     <Text fontSize="xs" color="purple.600" mt={1}>
-                      Monthly: {formatINR(goal.monthly_contribution)}
+                      Monthly SIP: {formatINR(goal.monthly_contribution)}
                     </Text>
                   )}
                 </GlassCard>
@@ -185,6 +228,40 @@ export default function GoalsPage() {
         )}
       </VStack>
 
+      {/* Add Savings Modal */}
+      <Modal isOpen={isAddOpen} onClose={onAddClose} size="xs">
+        <ModalOverlay backdropFilter="blur(4px)" />
+        <ModalContent>
+          <ModalHeader fontSize="md">Add Savings — {selectedGoal?.name}</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <VStack spacing={3}>
+              <Text fontSize="xs" color="gray.500">
+                Current: {formatINR(selectedGoal?.current_amount ?? 0)} /
+                Target: {formatINR(selectedGoal?.target_amount ?? 0)}
+              </Text>
+              <FormControl>
+                <FormLabel fontSize="sm">Amount to Add (₹)</FormLabel>
+                <NumberInput min={1} value={addAmount} onChange={setAddAmount}>
+                  <NumberInputField placeholder="e.g. 5000" />
+                </NumberInput>
+              </FormControl>
+            </VStack>
+          </ModalBody>
+          <ModalFooter gap={2}>
+            <Button variant="ghost" size="sm" onClick={onAddClose}>Cancel</Button>
+            <GradientButton
+              size="sm"
+              isLoading={addSavingsMutation.isPending}
+              onClick={handleAddSavings}
+            >
+              Add Savings
+            </GradientButton>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* New Goal Modal */}
       <Modal isOpen={isOpen} onClose={() => { reset(); onClose(); }} size="md">
         <ModalOverlay backdropFilter="blur(4px)" />
         <ModalContent as="form" onSubmit={handleSubmit(onSubmit)}>
@@ -196,14 +273,11 @@ export default function GoalsPage() {
                 <FormLabel fontSize="sm">Goal Type</FormLabel>
                 <Select placeholder="Select type" {...register('goal_type', { required: true })}>
                   <option value="emergency_fund">Emergency Fund</option>
-                  <option value="home">Buy a Home</option>
-                  <option value="vehicle">Buy a Vehicle</option>
+                  <option value="house">Buy a Home</option>
                   <option value="education">Education</option>
-                  <option value="travel">Travel</option>
-                  <option value="wedding">Wedding</option>
+                  <option value="vacation">Travel / Vacation</option>
                   <option value="retirement">Retirement</option>
-                  <option value="gadget">Gadget</option>
-                  <option value="other">Other</option>
+                  <option value="custom">Other / Custom</option>
                 </Select>
               </FormControl>
               <FormControl isRequired>
@@ -213,20 +287,30 @@ export default function GoalsPage() {
               <SimpleGrid columns={2} spacing={3} w="full">
                 <FormControl isRequired>
                   <FormLabel fontSize="sm">Target (₹)</FormLabel>
-                  <NumberInput min={1}><NumberInputField placeholder="0" {...register('target_amount', { required: true })} /></NumberInput>
+                  <NumberInput min={1}>
+                    <NumberInputField placeholder="0" {...register('target_amount', { required: true })} />
+                  </NumberInput>
                 </FormControl>
                 <FormControl>
                   <FormLabel fontSize="sm">Already Saved (₹)</FormLabel>
-                  <NumberInput min={0}><NumberInputField placeholder="0" {...register('current_amount')} /></NumberInput>
+                  <NumberInput min={0}>
+                    <NumberInputField placeholder="0" {...register('current_amount')} />
+                  </NumberInput>
                 </FormControl>
                 <FormControl>
                   <FormLabel fontSize="sm">Monthly SIP (₹)</FormLabel>
-                  <NumberInput min={0}><NumberInputField placeholder="0" {...register('monthly_contribution')} /></NumberInput>
+                  <NumberInput min={0}>
+                    <NumberInputField placeholder="0" {...register('monthly_contribution')} />
+                  </NumberInput>
                 </FormControl>
                 <FormControl>
                   <FormLabel fontSize="sm">Priority (1-5)</FormLabel>
                   <Select defaultValue="3" {...register('priority')}>
-                    {[1,2,3,4,5].map(p => <option key={p} value={p}>{p} {p === 1 ? '(Highest)' : p === 5 ? '(Lowest)' : ''}</option>)}
+                    {[1, 2, 3, 4, 5].map(p => (
+                      <option key={p} value={p}>
+                        {p} {p === 1 ? '(Highest)' : p === 5 ? '(Lowest)' : ''}
+                      </option>
+                    ))}
                   </Select>
                 </FormControl>
               </SimpleGrid>

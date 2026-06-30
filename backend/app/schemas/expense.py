@@ -61,6 +61,8 @@ class ExpenseResponse(BaseModel):
 class ExpenseFilters(BaseModel):
     page: int = 1
     limit: int = 20
+    from_date: Date | None = None
+    to_date: Date | None = None
     month: int | None = None
     year: int | None = None
     category_id: int | None = None
