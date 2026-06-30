@@ -23,9 +23,7 @@ Loan_Schedules/
 screenshots/
 Prompt/
 
-# Alembic generated versions (keep .gitkeep)
-backend/alembic/versions/*.py
-!backend/alembic/versions/.gitkeep
+# Alembic versions are tracked in git
 
 # Node
 node_modules/
